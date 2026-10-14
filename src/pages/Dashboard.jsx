@@ -34,7 +34,7 @@ export default function Dashboard() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Stats
+  // ===== STATS =====
   const todayOrders = orders.filter(o => o.orderDate === today);
   const pending = orders.filter(o => o.status === "Pending");
   const completed = orders.filter(o => o.status === "Completed");
@@ -45,12 +45,12 @@ export default function Dashboard() {
     o.dueDate && o.dueDate < today && o.status !== "Completed"
   );
 
-  // Cashier Balance
+  // ✅ Cashier Balance = අද complete වුණ orders වල advance එකේ එකතුව
   const cashierBalance = todayOrders
     .filter(o => o.status === "Completed")
     .reduce((sum, o) => sum + (Number(o.advance) || 0), 0);
 
-  // Today's Revenue
+  // ✅ Today's Revenue = අද තියෙන හැම order එකේම advance එකේ එකතුව
   const todayRevenue = todayOrders.reduce((sum, o) => sum + (Number(o.advance) || 0), 0);
 
   // Completion Rate
@@ -58,15 +58,16 @@ export default function Dashboard() {
     ? Math.round((completed.length / orders.length) * 100)
     : 0;
 
-  // Top Customer
+  // ✅ Top Customer - total එකෙන් හොඳම customer
   const customerTotals = {};
   orders.forEach(o => {
-    if (o.customer) {
-      customerTotals[o.customer] = (customerTotals[o.customer] || 0) + (Number(o.total) || 0);
+    if (o.customer && o.customer.trim()) {
+      const name = o.customer.trim();
+      customerTotals[name] = (customerTotals[name] || 0) + (Number(o.total) || 0);
     }
   });
-  const topCustomer = Object.entries(customerTotals)
-    .sort((a, b) => b[1] - a[1])[0];
+  const sortedCustomers = Object.entries(customerTotals).sort((a, b) => b[1] - a[1]);
+  const topCustomer = sortedCustomers[0];
 
   // Weekly chart data
   const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -110,12 +111,18 @@ export default function Dashboard() {
     navigate("/");
   };
 
+  // ✅ Search - customer, orderId, phone තුනෙන්ම හොයනවා
   const filteredOrders = orders
-    .filter(o =>
-      (o.customer || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.orderId || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.phone || "").includes(search)
-    )
+    .filter(o => {
+      if (!search.trim()) return true;
+      const s = search.toLowerCase().trim();
+      return (
+        (o.customer || "").toLowerCase().includes(s) ||
+        (o.orderId || "").toLowerCase().includes(s) ||
+        (o.phone || "").toLowerCase().includes(s) ||
+        (o.size || "").toLowerCase().includes(s)
+      );
+    })
     .slice(0, 8);
 
   const sidebarItems = [
@@ -403,7 +410,7 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-lg">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold text-gray-800 dark:text-white">
-              Recent Orders
+              {search ? `Search Results (${filteredOrders.length})` : "Recent Orders"}
             </h3>
             <button
               onClick={() => navigate("/orders")}
@@ -451,7 +458,7 @@ export default function Dashboard() {
                 {filteredOrders.length === 0 && (
                   <tr>
                     <td colSpan="6" className="text-center py-8 text-gray-400">
-                      No orders yet. Create your first order! 📦
+                      {search ? "No results found 🔍" : "No orders yet. Create your first order! 📦"}
                     </td>
                   </tr>
                 )}
@@ -481,12 +488,12 @@ function MiniCard({ icon: Icon, label, value, sub, color }) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-lg border border-gray-100 dark:border-gray-800">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="text-gray-500 dark:text-gray-400 text-xs">{label}</p>
-          <p className={`text-lg font-bold mt-1 ${color}`}>{value}</p>
+          <p className={`text-lg font-bold mt-1 truncate ${color}`}>{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
         </div>
-        <Icon size={28} className={color} />
+        <Icon size={28} className={`${color} flex-shrink-0 ml-2`} />
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-// ✅ Phone format helper — හැම format එකක්ම 94771234567 වලට
+// ✅ Phone format helper
 const formatPhone = (phone) => {
   if (!phone) return "";
   let p = String(phone).replace(/\D/g, "");
@@ -20,14 +20,14 @@ const formatPhone = (phone) => {
     p = "94" + p;
   }
   if (p.length !== 11) {
-    console.warn(`⚠️ Phone number length issue: "${phone}" → "${p}" (${p.length} digits)`);
+    console.warn(`⚠️ Phone number issue: "${phone}" → "${p}" (${p.length} digits)`);
   }
   return p;
 };
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
-  const [sizes, setSizes] = useState([]); // 👈 Settings එකෙන් load වෙන sizes
+  const [sizes, setSizes] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -45,7 +45,7 @@ export default function Orders() {
 
   const [form, setForm] = useState(emptyForm);
 
-  // Orders realtime load
+  // Orders realtime
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "orders"), (snap) => {
       setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -53,7 +53,7 @@ export default function Orders() {
     return () => unsub();
   }, []);
 
-  // 👇 Settings එකෙන් prices load කරනවා (realtime)
+  // Prices load from Settings
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "prices"), (snap) => {
       if (snap.exists()) {
@@ -67,7 +67,7 @@ export default function Orders() {
 
   const genOrderId = () => `VS-${String(orders.length + 1).padStart(4, "0")}`;
 
-  // ===== Size එකක් තේරූවම price එක auto fill කරනවා =====
+  // Size එකක් තේරූවම price auto fill
   const handleSizeChange = (selectedSize) => {
     const priceObj = sizes.find(s => s.size === selectedSize);
     setForm({
@@ -77,7 +77,7 @@ export default function Orders() {
     });
   };
 
-  // ===== CREATE or UPDATE =====
+  // ===== SAVE =====
   const handleSave = async () => {
     if (!form.customer || !form.dueDate || !form.total) {
       return alert("Fill required fields!");
@@ -124,7 +124,7 @@ export default function Orders() {
     setShowModal(true);
   };
 
-  // ===== COMPLETE + WhatsApp =====
+  // ===== COMPLETE =====
   const handleComplete = async (o) => {
     await updateDoc(doc(db, "orders", o.id), { status: "Completed" });
 
@@ -135,7 +135,7 @@ export default function Orders() {
     if (o.phone) {
       const phone = formatPhone(o.phone);
       if (phone.length !== 11) {
-        alert(`⚠️ Phone number issue: "${o.phone}"\nFormatted: "${phone}"\n\nSri Lanka number එක 94 + 9 digits වෙන්න ඕන (11 digits).`);
+        alert(`⚠️ Phone number issue: "${o.phone}"`);
       }
       window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
     } else {
@@ -143,7 +143,7 @@ export default function Orders() {
     }
   };
 
-  // ===== WhatsApp Only =====
+  // ===== WhatsApp =====
   const sendWhatsApp = (o) => {
     if (!o.phone) return alert("⚠️ No phone number!");
 
@@ -158,9 +158,6 @@ export default function Orders() {
     );
 
     const phone = formatPhone(o.phone);
-    if (phone.length !== 11) {
-      alert(`⚠️ Phone number issue: "${o.phone}"\nFormatted: "${phone}"\n\nSri Lanka number එක 94 + 9 digits වෙන්න ඕන (11 digits).`);
-    }
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
   };
 
@@ -208,11 +205,15 @@ export default function Orders() {
 
   // ===== FILTER & SEARCH =====
   const dayOrders = orders.filter(o => {
-    const matchesDate = search ? true : o.orderDate === selectedDate;
-    const matchesSearch = !search || (
-      (o.customer || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.orderId || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.phone || "").includes(search)
+    // Search කරනකොට date filter එක ignore වෙනවා
+    const matchesDate = search.trim() ? true : o.orderDate === selectedDate;
+    
+    const s = search.toLowerCase().trim();
+    const matchesSearch = !s || (
+      (o.customer || "").toLowerCase().includes(s) ||
+      (o.orderId || "").toLowerCase().includes(s) ||
+      (o.phone || "").toLowerCase().includes(s) ||
+      (o.size || "").toLowerCase().includes(s)
     );
     const matchesFilter = filterStatus === "All" || o.status === filterStatus;
     return matchesDate && matchesSearch && matchesFilter;
@@ -252,7 +253,7 @@ export default function Orders() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, phone, ID..."
+                placeholder="Search name, phone, ID, size..."
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-lg dark:text-white"
               />
             </div>
@@ -267,7 +268,7 @@ export default function Orders() {
             </select>
             <div className="flex gap-2">
               <button
-                onClick={() => setSearch(new Date().toISOString().split("T")[0])}
+                onClick={() => { setSearch(new Date().toISOString().split("T")[0]); setFilterStatus("All"); }}
                 className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-lg py-2.5 text-sm"
               >
                 Today
@@ -340,11 +341,13 @@ export default function Orders() {
         <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-lg">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold dark:text-white">
-              {search ? `Search Results (${dayOrders.length})` : `Orders on ${selectedDate} (${dayOrders.length})`}
+              {search.trim() ? `Search Results (${dayOrders.length})` : `Orders on ${selectedDate} (${dayOrders.length})`}
             </h3>
           </div>
           {dayOrders.length === 0 ? (
-            <p className="text-gray-400 text-center py-10">No orders found</p>
+            <p className="text-gray-400 text-center py-10">
+              {search.trim() ? "No results found 🔍" : "No orders found"}
+            </p>
           ) : (
             <div className="space-y-3 max-h-[600px] overflow-y-auto">
               {dayOrders.map(o => (
@@ -437,7 +440,7 @@ export default function Orders() {
                 </p>
               </div>
 
-              {/* 👇 Size Dropdown - Settings එකෙන් load වෙනවා */}
+              {/* Size Dropdown */}
               <div>
                 <label className="text-sm dark:text-gray-300">Size</label>
                 <select
