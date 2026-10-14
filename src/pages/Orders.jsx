@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  collection, addDoc, updateDoc, doc, onSnapshot, deleteDoc
+  collection, addDoc, updateDoc, doc, onSnapshot, deleteDoc, getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -12,33 +12,22 @@ import { useNavigate } from "react-router-dom";
 // ✅ Phone format helper — හැම format එකක්ම 94771234567 වලට
 const formatPhone = (phone) => {
   if (!phone) return "";
-
-  // 1. Digits විතරක් ගන්න (+ , 0, spaces, dashes ඔක්කොම අයින් කරන්න)
   let p = String(phone).replace(/\D/g, "");
-
-  // 2. Empty නම් return
   if (!p) return "";
-
-  // 3. "0" එකෙන් පටන් ගන්නවා නම් → 0 අයින් කරලා 94 දාන්න
   if (p.startsWith("0")) {
     p = "94" + p.substring(1);
-  }
-  // 4. "94" එකෙන් පටන් ගන්නේ නැත්නම් → 94 දාන්න
-  else if (!p.startsWith("94")) {
+  } else if (!p.startsWith("94")) {
     p = "94" + p;
   }
-
-  // 5. අන්තිමට digit count බලන්න (Sri Lanka = 94 + 9 digits = 11 digits)
-  // අඩු නම්, error message එකක් console එකට
   if (p.length !== 11) {
     console.warn(`⚠️ Phone number length issue: "${phone}" → "${p}" (${p.length} digits)`);
   }
-
   return p;
 };
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
+  const [sizes, setSizes] = useState([]); // 👈 Settings එකෙන් load වෙන sizes
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -49,13 +38,14 @@ export default function Orders() {
   const navigate = useNavigate();
 
   const emptyForm = {
-    customer: "", phone: "", size: "12x18",
+    customer: "", phone: "", size: "",
     dueDate: "", total: "", advance: "",
     status: "Pending", paymentMethod: "Cash"
   };
 
   const [form, setForm] = useState(emptyForm);
 
+  // Orders realtime load
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "orders"), (snap) => {
       setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -63,7 +53,29 @@ export default function Orders() {
     return () => unsub();
   }, []);
 
+  // 👇 Settings එකෙන් prices load කරනවා (realtime)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "prices"), (snap) => {
+      if (snap.exists()) {
+        setSizes(snap.data().list || []);
+      } else {
+        setSizes([]);
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const genOrderId = () => `VS-${String(orders.length + 1).padStart(4, "0")}`;
+
+  // ===== Size එකක් තේරූවම price එක auto fill කරනවා =====
+  const handleSizeChange = (selectedSize) => {
+    const priceObj = sizes.find(s => s.size === selectedSize);
+    setForm({
+      ...form,
+      size: selectedSize,
+      total: priceObj ? String(priceObj.price) : form.total
+    });
+  };
 
   // ===== CREATE or UPDATE =====
   const handleSave = async () => {
@@ -101,7 +113,7 @@ export default function Orders() {
     setForm({
       customer: o.customer || "",
       phone: o.phone || "",
-      size: o.size || "12x18",
+      size: o.size || "",
       dueDate: o.dueDate || "",
       total: o.total || "",
       advance: o.advance || "",
@@ -122,7 +134,6 @@ export default function Orders() {
 
     if (o.phone) {
       const phone = formatPhone(o.phone);
-      console.log("📱 Original:", o.phone, "→ Formatted:", phone);
       if (phone.length !== 11) {
         alert(`⚠️ Phone number issue: "${o.phone}"\nFormatted: "${phone}"\n\nSri Lanka number එක 94 + 9 digits වෙන්න ඕන (11 digits).`);
       }
@@ -132,7 +143,7 @@ export default function Orders() {
     }
   };
 
-  // ===== WhatsApp Only (status change නෑ) =====
+  // ===== WhatsApp Only =====
   const sendWhatsApp = (o) => {
     if (!o.phone) return alert("⚠️ No phone number!");
 
@@ -147,7 +158,6 @@ export default function Orders() {
     );
 
     const phone = formatPhone(o.phone);
-    console.log("📱 Original:", o.phone, "→ Formatted:", phone);
     if (phone.length !== 11) {
       alert(`⚠️ Phone number issue: "${o.phone}"\nFormatted: "${phone}"\n\nSri Lanka number එක 94 + 9 digits වෙන්න ඕන (11 digits).`);
     }
@@ -316,7 +326,6 @@ export default function Orders() {
             })}
           </div>
 
-          {/* Legend */}
           <div className="flex gap-3 mt-4 text-xs text-gray-500">
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 bg-orange-500 rounded-full"></span> Pending
@@ -428,12 +437,30 @@ export default function Orders() {
                 </p>
               </div>
 
+              {/* 👇 Size Dropdown - Settings එකෙන් load වෙනවා */}
               <div>
                 <label className="text-sm dark:text-gray-300">Size</label>
-                <select value={form.size} onChange={e => setForm({...form, size: e.target.value})}
-                  className="w-full p-2 border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg">
-                  {["12x18","8x10","10x15","16x20","A4","A3"].map(s => <option key={s}>{s}</option>)}
+                <select
+                  value={form.size}
+                  onChange={e => handleSizeChange(e.target.value)}
+                  className="w-full p-2 border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg"
+                >
+                  <option value="">Select Size</option>
+                  {sizes.length === 0 ? (
+                    <option disabled>⚠️ Settings එකේ Price List එකට sizes add කරන්න</option>
+                  ) : (
+                    sizes.map((s) => (
+                      <option key={s.id} value={s.size}>
+                        {s.size} - Rs. {s.price}
+                      </option>
+                    ))
+                  )}
                 </select>
+                {sizes.length === 0 && (
+                  <p className="text-xs text-orange-500 mt-1">
+                    ⚠️ Settings → Price List එකෙන් sizes add කරන්න
+                  </p>
+                )}
               </div>
 
               <Input label="Due Date *" type="date" value={form.dueDate} onChange={v => setForm({...form, dueDate: v})} />
